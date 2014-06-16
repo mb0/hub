@@ -5,7 +5,6 @@
 package hub
 
 import (
-	"encoding/json"
 	"hash/fnv"
 	"io"
 	"io/ioutil"
@@ -22,8 +21,8 @@ const (
 )
 
 type conn struct {
-	id     Id
-	send   chan Msg
+	id     uint64
+	send   chan *Msg
 	wconn  *websocket.Conn
 	ticker *time.Ticker
 }
@@ -35,7 +34,8 @@ func newconn(w http.ResponseWriter, r *http.Request) (*conn, error) {
 	}
 	hash := fnv.New32()
 	hash.Write([]byte(r.RemoteAddr))
-	return &conn{Id(hash.Sum32()), make(chan Msg, 64), wconn, time.NewTicker(pingPeriod)}, nil
+	id := uint64(hash.Sum32())
+	return &conn{id, make(chan *Msg, 64), wconn, time.NewTicker(pingPeriod)}, nil
 }
 
 func (c *conn) read(h *Hub) {
@@ -58,13 +58,14 @@ func (c *conn) read(h *Hub) {
 			log.Println("error receiving message", err)
 			return
 		}
-		var msg Msg
-		err = json.Unmarshal(bytes, &msg)
-		if err != nil {
-			log.Println("error decoding message", err)
-			return
+		colon := 0
+		for i, b := range bytes {
+			if b == ':' {
+				colon = i
+				break
+			}
 		}
-		h.Route <- &Envelope{c.id, Route, msg}
+		h.Route <- &Msg{c.id, RouteID, string(bytes[:colon]), bytes[colon+1:]}
 	}
 }
 
@@ -81,8 +82,9 @@ func (c *conn) write() {
 			if err != nil {
 				return
 			}
-			enc := json.NewEncoder(w)
-			err = enc.Encode(msg)
+			w.Write([]byte(msg.Head))
+			w.Write([]byte{':'})
+			_, err = w.Write(msg.Data)
 			if err != nil {
 				log.Println("error encoding message", err)
 			}
