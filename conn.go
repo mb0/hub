@@ -10,7 +10,6 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
-	"net"
 	"net/http"
 	"time"
 
@@ -19,8 +18,7 @@ import (
 
 const (
 	writeWait  = 10 * time.Second
-	readWait   = 60 * time.Second
-	pingPeriod = (readWait * 9) / 10
+	pingPeriod = 60 * time.Second
 )
 
 type conn struct {
@@ -42,17 +40,12 @@ func newconn(w http.ResponseWriter, r *http.Request) (*conn, error) {
 
 func (c *conn) read(h *Hub) {
 	for {
-		c.wconn.SetReadDeadline(time.Now().Add(readWait))
 		op, r, err := c.wconn.NextReader()
 		if err != nil {
-			if nerr, ok := err.(net.Error); !ok || !nerr.Timeout() {
-				switch err {
-				case io.EOF, io.ErrUnexpectedEOF:
-				default:
-					log.Printf("error receiving message %+v\n", err)
-				}
-				return
+			if err != io.EOF && err != io.ErrUnexpectedEOF {
+				log.Printf("error receiving message %+v\n", err)
 			}
+			return
 		}
 		if op == websocket.BinaryMessage {
 			return
