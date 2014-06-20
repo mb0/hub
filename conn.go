@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -25,6 +26,8 @@ type conn struct {
 	send   chan *Msg
 	wconn  *websocket.Conn
 	ticker *time.Ticker
+	sync.Mutex
+	groups []uint64
 }
 
 func newconn(w http.ResponseWriter, r *http.Request) (*conn, error) {
@@ -35,7 +38,13 @@ func newconn(w http.ResponseWriter, r *http.Request) (*conn, error) {
 	hash := fnv.New32()
 	hash.Write([]byte(r.RemoteAddr))
 	id := uint64(hash.Sum32())
-	return &conn{id, make(chan *Msg, 64), wconn, time.NewTicker(pingPeriod)}, nil
+	c := &conn{
+		id:     id,
+		send:   make(chan *Msg, 64),
+		wconn:  wconn,
+		ticker: time.NewTicker(pingPeriod),
+	}
+	return c, nil
 }
 
 func (c *conn) read(h *Hub) {

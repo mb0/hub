@@ -41,12 +41,6 @@ func (m *Msg) Unmarshal(v interface{}) error {
 	return json.Unmarshal(m.Data, v)
 }
 
-type Group struct {
-	ID uint64
-	sync.Mutex
-	Users []uint64
-}
-
 type Hub struct {
 	sync.RWMutex
 	conns  []*conn
@@ -83,6 +77,15 @@ func (h *Hub) signoff(c *conn) {
 		h.conns = h.conns[:last]
 	}
 	delete(h.idmap, c.id)
+	c.Lock()
+	groups := c.groups
+	c.groups = nil
+	c.Unlock()
+	for _, gid := range groups {
+		if g, ok := h.groups[gid]; ok {
+			g.Unsubscribe(c.id)
+		}
+	}
 	h.Unlock()
 	c.close()
 	close(c.send)
@@ -96,7 +99,7 @@ func (h *Hub) Group(id uint64) *Group {
 	h.Lock()
 	g := h.groups[id]
 	if g == nil {
-		g = &Group{ID: id}
+		g = &Group{ID: id, Hub: h}
 		h.groups[id] = g
 	}
 	h.Unlock()
@@ -127,16 +130,7 @@ func (h *Hub) Send(m *Msg) {
 		if g == nil {
 			break
 		}
-		g.Lock()
-		for _, id := range g.Users {
-			if id == except {
-				continue
-			}
-			if c, ok := h.idmap[id]; ok {
-				c.send <- m
-			}
-		}
-		g.Unlock()
+		g.SendMsg(m, except)
 	default:
 		if c, ok := h.idmap[m.To]; ok {
 			c.send <- m
