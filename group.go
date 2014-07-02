@@ -52,7 +52,7 @@ func (g *Group) Unsubscribe(id uint64) {
 			break
 		}
 		c.Unlock()
-		break
+		return
 	}
 }
 

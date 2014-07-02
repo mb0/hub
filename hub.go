@@ -75,6 +75,7 @@ func (h *Hub) signoff(c *conn) {
 		last := len(h.conns) - 1
 		h.conns[i] = h.conns[last]
 		h.conns = h.conns[:last]
+		break
 	}
 	delete(h.idmap, c.id)
 	c.Lock()
